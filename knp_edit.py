@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 def main():
     input_file = open("doc0000000000.knp.txt", "r")
     one_sentence_list = []
