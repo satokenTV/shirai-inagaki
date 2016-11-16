@@ -1,60 +1,97 @@
 # -*- coding: utf-8 -*-
-def main():
-    input_file = open("doc0000000000.knp.txt", "r")
-    one_sentence_list = []
-    phrase_index_dict = {}
-    dependent_index_dict = {}
-    morpheme_index = 0
-    phrase_index = -1
-    dependent_index = 0
-    noun_index_list = []
-    verb_index_list = []
-    particle_index_list = []
+import codecs
 
-    for line in input_file.readlines():
-        analysis_morpheme = line.split(" ")
-        if "EOS\n" in line:
-            if noun_index_list != [] and verb_index_list != [] and particle_index_list != []:
-                verb_base = 0
-                for verb_index in verb_index_list:
-                    if str(phrase_index_dict[verb_index]) in dependent_index_dict:
-                        print(one_sentence_list[verb_index], end=' ')
-                        for particle_index in dependent_index_dict[str(phrase_index_dict[verb_index])]:
-                            if particle_index in particle_index_list:
-                                if str(phrase_index_dict[particle_index]) in dependent_index_dict:
-                                    noun_index = dependent_index_dict[str(phrase_index_dict[particle_index])][0]
-                                    if noun_index in noun_index_list:
-                                        print(one_sentence_list[noun_index] + ' ' + one_sentence_list[particle_index] + ' ')
-                    print()
-            one_sentence_list = []
-            phrase_index_dict = {}
-            dependent_index_dict = {}
-            morpheme_index = 0
-            phrase_index = -1
-            dependent_index = 0
-            noun_index_list = []
-            verb_index_list = []
-            particle_index_list = []
-        elif "+" in analysis_morpheme[0]:
-            dependent_index = analysis_morpheme[1].rstrip("D")
-            phrase_index += 1
-        elif "*" not in analysis_morpheme[0]:
-            if "名詞" in analysis_morpheme[3]:
-                noun_index_list.append(morpheme_index)
-            if "助詞" in analysis_morpheme[3]:
-                particle_index_list.append(morpheme_index)
-            if "動詞" in analysis_morpheme[3]:
-                verb_index_list.append(morpheme_index)
-                one_sentence_list.append(analysis_morpheme[2])
+class Morpheme:
+    def __init__(self,surface,base,pos,pos1):
+        self.surface = surface
+        self.base = base
+        self.pos = pos
+        self.pos1 = pos1
+
+class Phrase:
+    def __init__(self,morpheme_surfaces,morpheme_bases,morphemes_poses,modifier_index,phrase_index):
+        self.morpheme_surfaces = morpheme_surfaces
+        self.morpheme_bases = morpheme_bases
+        self.morpheme_poses = morphemes_poses
+        self.modifier_index = modifier_index
+        self.phrase_index = phrase_index
+
+class Sentence:
+    def __init__(self, phrases):
+        self.phrases = phrases
+
+def init(sentence):
+    sentence = Sentence([])
+
+def decisionOutput(phrases):
+    output_candidate_phrases = []
+    output_candidate_phrases_modifier_indexs = []
+    for phrase in phrases:
+        for output_candidate_phrase in output_candidate_phrases:
+            modifier_index = int(output_candidate_phrase.split("\t")[0])
+            modifiee_index = phrase.phrase_index
+            if modifier_index == modifiee_index:
+                if u"動詞" in phrase.morpheme_poses:
+                    noun_particle = output_candidate_phrase.split("\t")[1]
+                    verb_index = phrase.morpheme_poses.index(u"動詞")
+                    verb = phrase.morpheme_bases[verb_index]
+                    verb_noun_particle = verb + ' ' + noun_particle
+                    print(verb_noun_particle)
+                    output_candidate_phrases.remove(output_candidate_phrase)
+                    output_candidate_phrases_modifier_indexs.remove(str(modifier_index))
+                    break
+        if u"名詞" in phrase.morpheme_poses and u"助詞" in phrase.morpheme_poses:
+            noun_index = phrase.morpheme_poses.index(u"名詞")
+            noun = phrase.morpheme_surfaces[noun_index]
+            particle_index = phrase.morpheme_poses.index(u"助詞")
+            particle = phrase.morpheme_surfaces[particle_index]
+            if phrase.modifier_index not in output_candidate_phrases_modifier_indexs:
+                output_candidate_phrases_modifier_indexs.append(phrase.modifier_index)
+                output_candidate_phrases.append(phrase.modifier_index + '\t' + noun + ' ' + particle)
             else:
-                one_sentence_list.append(analysis_morpheme[0])
+                index = output_candidate_phrases_modifier_indexs.index(phrase.modifier_index)
+                output_candidate_phrases[index] += (' ' + noun + ' ' + particle)
 
-            if dependent_index not in dependent_index_dict:
-                dependent_index_dict[dependent_index] = []
-            dependent_index_dict[dependent_index].append(morpheme_index)
 
-            phrase_index_dict[morpheme_index] = phrase_index
-            morpheme_index += 1
+def main():
+    input_file = codecs.open("doc0000000000.knp.txt", 'r', "utf-8")
+    phrase = Phrase([], [], [], -1, -1)
+    sentence = Sentence([])
+    phrase_index = 0
+# 全体的に変数名見直す
+    for line in input_file.readlines():
+
+        if "EOS\n" == line:
+            if len(phrase.morpheme_surfaces) != 0:
+                sentence.phrases.append(phrase)
+            decisionOutput(sentence.phrases)
+            sentence = Sentence([])
+            phrase_index = 0
+            continue
+        else:
+            line_split = line.split(" ")
+            identifiers = []
+            identifiers.append(line_split[0])
+            identifiers.append(line_split[2][0])
+        if '*' == identifiers[0] and '<' == identifiers[1]:
+            continue
+        if '#' == identifiers[0] and 'U' == identifiers[1]:
+            continue
+        elif '+' == identifiers[0] and '<' == identifiers[1]:
+            if len(phrase.morpheme_surfaces) != 0:
+                sentence.phrases.append(phrase)
+            #↑1句終わりとしての処理、↓1句はじめとしての処理
+            modifier_index = line_split[1][:-1]
+            phrase = Phrase([], [], [], modifier_index, phrase_index)
+            phrase_index += 1
+        else:
+            surface = line_split[0]
+            base = line_split[2]
+            pos = line_split[3]
+            phrase.morpheme_surfaces.append(surface)
+            phrase.morpheme_bases.append(base)
+            phrase.morpheme_poses.append(pos)
+
 
     input_file.close()
 
