@@ -1,26 +1,31 @@
 # -*- coding: utf-8 -*-
 import codecs
+import re
+
 import kanaconvert
 
 
 class Morpheme:
-    def __init__(self, surface, base, pos):
+    def __init__(self, surface, base, pos, adj):
         self.surface = surface
         self.base = base
         self.pos = pos
+        self.adj = adj
 
 
 class Phrase:
-    def __init__(self, morphemes, modify_index, modified_indexes, phrase_index):
+    def __init__(self, morphemes, modify_index, modified_indexes, voice, phrase_index):
         self.morphemes = morphemes
         self.modify_index = modify_index
         self.modified_indexes = modified_indexes
+        self.voice = voice
         self.phrase_index = phrase_index
 
     def default(self):
         self.morphemes = []
         self.modify_index = -1
         self.modified_indexes = []
+        self.voice = ""
         self.phrase_index = -1
 
     def have_pos(self, pos):
@@ -39,7 +44,7 @@ class Phrase:
         for morpheme in self.morphemes:
             if pos == morpheme.pos:
                 return morpheme.base
-        return ""
+        return ''
 
 
 class Sentence:
@@ -62,17 +67,48 @@ def set_phrase_modified(sentence):
         sentence.phrases[phrase.modify_index].modified_indexes.append(phrase.phrase_index)
 
 
+def check_filtering_particle(particle):
+    if particle != u'の' and particle != u'は':
+        return False
+    else:
+        return True
+
+
+def check_filtering_voice(voice):
+    if voice != u"受動" and voice != u"使役":
+        return False
+    else:
+        return True
+
+
+def check_filtering_adj(phrase):
+    takeirenyo_flag = False
+    for morpheme in phrase.morphemes:
+        if takeirenyo_flag:
+            if morpheme.surface == "ある":
+                return True
+        takeirenyo_flag = False
+        if morpheme.adj == u"タ系連用テ形":
+            takeirenyo_flag = True
+    return False
+
+
 def decision_output(sentence):
     have_verb_phrases = sentence.get_have_pos_phrases(u"動詞")
     for have_verb_phrase in have_verb_phrases:
+        if check_filtering_voice(have_verb_phrase.voice):
+            continue
+        if check_filtering_adj(have_verb_phrase):
+            continue
         verb = have_verb_phrase.get_have_pos_base(u"動詞")
         result = verb
         for modified_index in have_verb_phrase.modified_indexes:
             if sentence.phrases[modified_index].have_pos(u"名詞") and sentence.phrases[modified_index].have_pos(u"助詞"):
                 noun = sentence.phrases[modified_index].get_have_pos_surface(u"名詞")
                 particle = sentence.phrases[modified_index].get_have_pos_surface(u"助詞")
-                if particle != u'の' and particle != u'は':
-                    result = result + ' ' + noun + ' ' + kanaconvert.katakana(particle)
+                if check_filtering_particle(particle):
+                    continue
+                result = result + ' ' + noun + ' ' + kanaconvert.katakana(particle)
         if len(result.split(' ')) >= 3:
             print(result)
 
@@ -85,9 +121,9 @@ def init(sentence, phrase):
 def main():
     input_file = codecs.open("doc0000000000.knp.txt", 'r', "utf-8")
     sentence = Sentence([])
-    phrase = Phrase([], 0, [], 0)
+    phrase = Phrase([], -1, [], '', -1)
     phrase_index = -1
-# 全体的に変数名見直す
+
     for line in input_file.readlines():
         if "EOS\n" == line:
             if phrase.morphemes:
@@ -98,10 +134,8 @@ def main():
             phrase_index = -1
             continue
         else:
-            line_split = line.split(" ")
-            identifiers = []
-            identifiers.append(line_split[0])
-            identifiers.append(line_split[2][0])
+            splited_line = line.split(" ")
+            identifiers = [splited_line[0], splited_line[2][0]]
         if '*' == identifiers[0] and '<' == identifiers[1]:
             continue
         if '#' == identifiers[0] and 'U' == identifiers[1]:
@@ -110,14 +144,20 @@ def main():
             if phrase.morphemes:
                 sentence.phrases.append(phrase)
             # ↑1句終わりとしての処理、↓1句はじめとしての処理
-            modify_index = int(line_split[1][:-1])
+            modify_index = int(splited_line[1][:-1])
+            voices = re.findall(r"<態:(.*?)>", line)
+            if voices:
+                voice = voices[0]
+            else:
+                voice = ''
             phrase_index += 1
-            phrase = Phrase([], modify_index, [], phrase_index)
+            phrase = Phrase([], modify_index, [], voice, phrase_index)
         else:
-            surface = line_split[0]
-            base = line_split[2]
-            pos = line_split[3]
-            phrase.morphemes.append(Morpheme(surface, base, pos))
+            surface = splited_line[0]
+            base = splited_line[2]
+            pos = splited_line[3]
+            adj = splited_line[9]
+            phrase.morphemes.append(Morpheme(surface, base, pos, adj))
 
     input_file.close()
 
