@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import codecs
+import kanaconvert
 
 
 class Morpheme:
@@ -71,7 +72,7 @@ def decision_output(sentence):
                 noun = sentence.phrases[modified_index].get_have_pos_surface(u"名詞")
                 particle = sentence.phrases[modified_index].get_have_pos_surface(u"助詞")
                 if particle != u'の' and particle != u'は':
-                    result = result + ' ' + noun + ' ' + particle
+                    result = result + ' ' + noun + ' ' + kanaconvert.katakana(particle)
         if len(result.split(' ')) >= 3:
             print(result)
 
