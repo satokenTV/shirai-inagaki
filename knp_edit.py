@@ -16,47 +16,13 @@ _input_file_place = _input_file_directory + _input_file_name
 _db_name = "sqlite:///db.shirai"
 
 
-def set_phrase_modified(sentence):
-    for phrase in sentence.phrases:
-        sentence.phrases[phrase.modify_index].modified_indexes.append(phrase.phrase_index)
-
-
-def check_filtering_particle(particle):
-    if particle != u'の' and particle != u'は':
-        return False
-    else:
+def is_voice_filtering_(phrase):
+    if phrase.voice == "受動" or phrase.voice == "使役":
         return True
-
-
-def check_filtering_voice(voice):
-    if voice != u"受動" and voice != u"使役":
-        return False
-    else:
-        return True
-
-
-def check_filtering_adj(phrase):
-    takeirenyo_flag = False
-    for morpheme in phrase.morphemes:
-        if takeirenyo_flag:
-            if morpheme.surface == u"ある":
-                return True
-        takeirenyo_flag = False
-        if morpheme.adj == u"タ系連用テ形":
-            takeirenyo_flag = True
-    return False
-
-
-def check_connect_verb(phrase, modify_phrase):
-    if phrase.modify_index == modify_phrase.phrase_index:
-        if phrase.phrase_index == (modify_phrase.phrase_index + 1):
-            if phrase.form == u"連用":
-                return True
     return False
 
 
 def decision_output_base(engine):
-    sentence_id = 1
     sess = sessionmaker(bind=engine)
     session = sess()
 
@@ -65,6 +31,9 @@ def decision_output_base(engine):
     output_line_list = []
 
     for have_verb_morpheme in have_verb_morphemes:
+        have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
+        if is_voice_filtering_(have_verb_phrase):
+            continue
         have_verb_pre_morpheme_id = have_verb_morpheme.id - 1
         have_verb_2_pre_morpheme_id = have_verb_morpheme.id - 2
         have_verb_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_pre_morpheme_id).first()
