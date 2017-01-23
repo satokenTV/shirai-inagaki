@@ -61,32 +61,21 @@ def decision_output_base(engine):
     session = sess()
 
     have_verb_morphemes = session.query(db.Morpheme).filter_by(pos="動詞").all()
-    have_noun_morphemes = session.query(db.Morpheme).filter_by(pos="名詞").all()
-    have_particle_morphemes = session.query(db.Morpheme).filter_by(pos="助詞").all()
-    have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
-    have_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_particle_morphemes]
-    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_particle_phrase_ids))
 
     output_line_list = []
 
     for have_verb_morpheme in have_verb_morphemes:
-        have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
-        have_verb_phrase_modify_phrase = session.query(db.Phrase).filter_by(modify_id=have_verb_phrase.id).all()
-        have_verb_phrase_modify_phrase_ids = [phrase.id for phrase in have_verb_phrase_modify_phrase]
+        have_verb_pre_morpheme_id = have_verb_morpheme.id - 1
+        have_verb_2_pre_morpheme_id = have_verb_morpheme.id - 2
+        have_verb_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_pre_morpheme_id).first()
+        have_verb_2_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_2_pre_morpheme_id).first()
 
-        print_noun_and_phrase_phrase_ids = list(
-            set(have_noun_and_particle_phrase_ids) & set(have_verb_phrase_modify_phrase_ids))
-        output_line = ""
-        if print_noun_and_phrase_phrase_ids:
-            for print_noun_and_phrase_phrase_id in print_noun_and_phrase_phrase_ids:
-                output_line += session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
-                                                                    pos="名詞").first().surface
-                output_line += " "
-                output_line += session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
-                                                                    pos="助詞").first().surface
-                output_line += " "
-            output_line += have_verb_morpheme.base
-            output_line_list.append(output_line)
+        if have_verb_pre_morpheme.pos == "助詞" and have_verb_2_pre_morpheme.pos == "名詞":
+            noun = have_verb_2_pre_morpheme.surface
+            particle = have_verb_pre_morpheme.surface
+            verb = have_verb_morpheme.base
+            output_line_list.append(noun + ' ' + particle + ' ' + verb)
+
     print(output_line_list)
 
 def init(surfaces, bases, poses, adjs, modify_ids, voices, forms):
