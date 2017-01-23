@@ -1,65 +1,19 @@
 # -*- coding: utf-8 -*-
-import codecs
 import re
 
+import sys
+
+import db
+import process_db
+import process_file
 import kanaconvert
+from sqlalchemy.orm import sessionmaker
+from tqdm import tqdm
 
-
-class Morpheme:
-    def __init__(self, surface, base, pos, adj):
-        self.surface = surface
-        self.base = base
-        self.pos = pos
-        self.adj = adj
-
-
-class Phrase:
-    def __init__(self, morphemes, modify_index, modified_indexes, voice, phrase_index):
-        self.morphemes = morphemes
-        self.modify_index = modify_index
-        self.modified_indexes = modified_indexes
-        self.voice = voice
-        self.phrase_index = phrase_index
-
-    def default(self):
-        self.morphemes = []
-        self.modify_index = -1
-        self.modified_indexes = []
-        self.voice = ""
-        self.phrase_index = -1
-
-    def have_pos(self, pos):
-        for morpheme in self.morphemes:
-            if pos == morpheme.pos:
-                return True
-        return False
-
-    def get_have_pos_surface(self, pos):
-        for morpheme in self.morphemes:
-            if pos == morpheme.pos:
-                return morpheme.surface
-        return ""
-
-    def get_have_pos_base(self, pos):
-        for morpheme in self.morphemes:
-            if pos == morpheme.pos:
-                return morpheme.base
-        return ''
-
-
-class Sentence:
-    def __init__(self, phrases):
-        self.phrases = phrases
-
-    def default(self):
-        self.phrases = []
-
-    def get_have_pos_phrases(self, pos):
-        have_pos_phrases = []
-        for phrase in self.phrases:
-            if phrase.have_pos(pos):
-                have_pos_phrases.append(phrase)
-        return have_pos_phrases
+_input_file_directory = u""
+_input_file_name = u"doc0000000000.knp.txt"
+_input_file_place = _input_file_directory + _input_file_name
+_db_name = "sqlite:///db.shirai"
 
 
 def set_phrase_modified(sentence):
@@ -85,7 +39,7 @@ def check_filtering_adj(phrase):
     takeirenyo_flag = False
     for morpheme in phrase.morphemes:
         if takeirenyo_flag:
-            if morpheme.surface == "ある":
+            if morpheme.surface == u"ある":
                 return True
         takeirenyo_flag = False
         if morpheme.adj == u"タ系連用テ形":
@@ -93,73 +47,114 @@ def check_filtering_adj(phrase):
     return False
 
 
-def decision_output(sentence):
-    have_verb_phrases = sentence.get_have_pos_phrases(u"動詞")
-    for have_verb_phrase in have_verb_phrases:
-        if check_filtering_voice(have_verb_phrase.voice):
-            continue
-        if check_filtering_adj(have_verb_phrase):
-            continue
-        verb = have_verb_phrase.get_have_pos_base(u"動詞")
-        result = verb
-        for modified_index in have_verb_phrase.modified_indexes:
-            if sentence.phrases[modified_index].have_pos(u"名詞") and sentence.phrases[modified_index].have_pos(u"助詞"):
-                noun = sentence.phrases[modified_index].get_have_pos_surface(u"名詞")
-                particle = sentence.phrases[modified_index].get_have_pos_surface(u"助詞")
-                if check_filtering_particle(particle):
-                    continue
-                result = result + ' ' + noun + ' ' + kanaconvert.katakana(particle)
-        if len(result.split(' ')) >= 3:
-            print(result)
+def check_connect_verb(phrase, modify_phrase):
+    if phrase.modify_index == modify_phrase.phrase_index:
+        if phrase.phrase_index == (modify_phrase.phrase_index + 1):
+            if phrase.form == u"連用":
+                return True
+    return False
 
 
-def init(sentence, phrase):
-    sentence.default()
-    phrase.default()
+def decision_output_base(engine):
+    sentence_id = 1
+    sess = sessionmaker(bind=engine)
+    session = sess()
+
+    have_verb_morphemes = session.query(db.Morpheme).filter_by(pos="動詞").all()
+    have_noun_morphemes = session.query(db.Morpheme).filter_by(pos="名詞").all()
+    have_particle_morphemes = session.query(db.Morpheme).filter_by(pos="助詞").all()
+    have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
+    have_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_particle_morphemes]
+    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_particle_phrase_ids))
+
+    output_line_list = []
+
+    for have_verb_morpheme in have_verb_morphemes:
+        have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
+        have_verb_phrase_modify_phrase = session.query(db.Phrase).filter_by(modify_id=have_verb_phrase.id).all()
+        have_verb_phrase_modify_phrase_ids = [phrase.id for phrase in have_verb_phrase_modify_phrase]
+
+        print_noun_and_phrase_phrase_ids = list(
+            set(have_noun_and_particle_phrase_ids) & set(have_verb_phrase_modify_phrase_ids))
+        output_line = ""
+        if print_noun_and_phrase_phrase_ids:
+            for print_noun_and_phrase_phrase_id in print_noun_and_phrase_phrase_ids:
+                output_line += session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
+                                                                    pos="名詞").first().surface
+                output_line += " "
+                output_line += session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
+                                                                    pos="助詞").first().surface
+                output_line += " "
+            output_line += have_verb_morpheme.base
+            output_line_list.append(output_line)
+    print(output_line_list)
+
+def init(surfaces, bases, poses, adjs, modify_ids, voices, forms):
+    surfaces = []
+    bases = []
+    poses = []
+    adjs = []
+    modify_ids = []
+    voices = []
+    forms = []
+    return surfaces, bases, poses, adjs, modify_ids, voices, forms
 
 
-def main():
-    input_file = codecs.open("doc0000000000.knp.txt", 'r', "utf-8")
-    sentence = Sentence([])
-    phrase = Phrase([], -1, [], '', -1)
-    phrase_index = -1
+def create_db(engine):
+    sentences = process_file.get_all_lines(_input_file_place)
+    surfaces = []
+    bases = []
+    poses = []
+    adjs = []
+    modify_ids = []
+    voices = []
+    forms = []
+    sentence_id = 1
 
-    for line in input_file.readlines():
-        if "EOS\n" == line:
-            if phrase.morphemes:
-                sentence.phrases.append(phrase)
-            set_phrase_modified(sentence)
-            decision_output(sentence)
-            init(sentence, phrase)
-            phrase_index = -1
+    for sentence in tqdm(sentences):
+        sentence = sentence.rstrip()
+        if "EOS" == sentence:
+            process_db.registration_features(engine, surfaces, bases, poses, adjs, modify_ids, voices, forms,
+                                             sentence_id)
+            sentence_id += 1
+            surfaces, bases, poses, adjs, modify_ids, voices, forms = init(surfaces, bases, poses, adjs, modify_ids,
+                                                                           voices, forms)
             continue
         else:
-            splited_line = line.split(" ")
-            identifiers = [splited_line[0], splited_line[2][0]]
+            split_line = sentence.split(" ")
+            identifiers = [split_line[0], split_line[2][0]]
         if '*' == identifiers[0] and '<' == identifiers[1]:
             continue
         if '#' == identifiers[0] and 'U' == identifiers[1]:
             continue
         elif '+' == identifiers[0] and '<' == identifiers[1]:
-            if phrase.morphemes:
-                sentence.phrases.append(phrase)
-            # ↑1句終わりとしての処理、↓1句はじめとしての処理
-            modify_index = int(splited_line[1][:-1])
-            voices = re.findall(r"<態:(.*?)>", line)
-            if voices:
-                voice = voices[0]
+            modify_ids.append(int(split_line[1][:-1]))
+            if re.findall(r"<態:(.*?)>", sentence):
+                voices.append(re.findall(r"<態:(.*?)>", sentence)[0])
             else:
-                voice = ''
-            phrase_index += 1
-            phrase = Phrase([], modify_index, [], voice, phrase_index)
-        else:
-            surface = splited_line[0]
-            base = splited_line[2]
-            pos = splited_line[3]
-            adj = splited_line[9]
-            phrase.morphemes.append(Morpheme(surface, base, pos, adj))
+                voices.append(' ')
+            if re.findall(r"<係:(.*?)>", sentence):
+                forms.append(re.findall(r"<係:(.*?)>", sentence)[0])
+            else:
+                forms.append('')
 
-    input_file.close()
+            if surfaces:
+                surfaces.append('')
+                bases.append('')
+                poses.append('')
+                adjs.append('')
+        else:
+            surfaces.append(split_line[0])
+            bases.append(split_line[2])
+            poses.append(split_line[3])
+            adjs.append(split_line[9])
+
+
+def main():
+    engine = process_db.open_db(_db_name)
+    # create_db(engine)
+    decision_output_base(engine)
+
 
 if __name__ == "__main__":
     main()
