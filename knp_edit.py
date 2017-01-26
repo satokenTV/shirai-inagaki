@@ -38,6 +38,9 @@ def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if morpheme.adj == "タ系連用テ系":
         return True
 
+    if morpheme.surface == morpheme.base:
+        return True
+
     return False
 
 
