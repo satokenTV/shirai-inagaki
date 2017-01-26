@@ -18,30 +18,40 @@ _db_name = "sqlite:///db.shirai"
 
 def is_filtering_phrase(voice):
     if voice == "受動" or voice == "使役":
-        return True
-    return False
+        return False
+    return True
 
 
 def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if next_morpheme.pos != "動詞":
-        return True
+        return False
 
     phrase = session.query(db.Phrase).filter_by(id=morpheme.phrase_id).first()
     next_phrase = session.query(db.Phrase).filter_by(id=next_morpheme.phrase_id).first()
 
     if phrase.modify_id != next_phrase.id:
-        return True
+        return False
 
     if phrase.form != "連用":
-        return True
+        return False
 
     if morpheme.adj == "タ系連用テ系":
-        return True
+        return False
 
     if morpheme.surface == morpheme.base:
-        return True
+        return False
 
-    return False
+    return True
+
+
+def is_connect_noun_to_verb(morpheme, pre_morpheme):
+    if morpheme.conjugate != "サ変動詞":
+        return False
+
+    if pre_morpheme.pos2 != "サ変名詞":
+        return False
+
+    return True
 
 
 def connect_special_adjective_to_verb(have_special_adjective_phrase_ids, have_special_adjective_morphemes,
@@ -66,12 +76,16 @@ def connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify
     return adverb
 
 
-def connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
-    if is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
-        return have_verb_morpheme.base
+def connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_pre_morpheme, session):
+    verb = ""
+    if is_connect_noun_to_verb(have_verb_morpheme, have_verb_pre_morpheme):
+        verb += have_verb_pre_morpheme.surface
 
-    connected_verb = have_verb_morpheme.surface + have_verb_next_morpheme.base
-    return connected_verb
+    if is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
+        verb += have_verb_morpheme.surface + have_verb_next_morpheme.base
+    else:
+        verb += have_verb_morpheme.base
+    return verb
 
 
 def decide_output(engine):
@@ -106,12 +120,17 @@ def decide_output(engine):
     output_line_list = []
 
     for have_verb_morpheme in have_verb_morphemes:
+        have_verb_pre_morpheme_id = have_verb_morpheme.id - 1
+        have_verb_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_pre_morpheme_id).first()
         have_verb_next_morpheme_id = have_verb_morpheme.id + 1
         have_verb_next_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_next_morpheme_id).first()
         if have_verb_next_morpheme is None:
             break
 
         have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
+        if not is_filtering_phrase(have_verb_phrase.voice):
+            continue
+
         modify_verb_phrases = session.query(db.Phrase).filter_by(modify_id=have_verb_phrase.id).all()
         modify_verb_phrase_ids = [phrase.id for phrase in modify_verb_phrases]
 
@@ -123,11 +142,12 @@ def decide_output(engine):
                                                             pos="名詞").first().surface
                 particle = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
                                                                 pos="助詞").first().surface
+
             special_adjective = connect_special_adjective_to_verb(have_special_adjective_phrase_ids,
                                                                   have_special_adjective_morphemes,
                                                                   modify_verb_phrase_ids)
             adverb = connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids)
-            verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session)
+            verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_pre_morpheme, session)
 
             output_line_list.append(noun + " " + particle + " " + adverb + special_adjective + verb)
     print(output_line_list)
