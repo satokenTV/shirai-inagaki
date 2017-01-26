@@ -38,23 +38,25 @@ def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     return False
 
 
-def connect_specific_to_verb(have_specific_phrase_ids, have_specific_morphemes, modify_verb_phrase_ids):
-    specific = ""
-    modify_verb_have_specific_phrase_ids = list(set(have_specific_phrase_ids) & set(modify_verb_phrase_ids))
-    for modify_verb_have_specific_phrase_id in modify_verb_have_specific_phrase_ids:
-        for have_specific_morpheme in have_specific_morphemes:
-            if have_specific_morpheme.phrase_id == modify_verb_have_specific_phrase_id:
-                specific += have_specific_morpheme.surface
-    return specific
+def connect_special_adjective_to_verb(have_special_adjective_phrase_ids, have_special_adjective_morphemes,
+                                      modify_verb_phrase_ids):
+    special_adjective = ""
+    modify_verb_have_special_adjective_phrase_ids = list(
+        set(have_special_adjective_phrase_ids) & set(modify_verb_phrase_ids))
+    for modify_verb_have_special_adjective_phrase_id in modify_verb_have_special_adjective_phrase_ids:
+        for have_special_adjective_morpheme in have_special_adjective_morphemes:
+            if have_special_adjective_morpheme.phrase_id == modify_verb_have_special_adjective_phrase_id:
+                special_adjective += have_special_adjective_morpheme.surface
+    return special_adjective
 
 
 def connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids):
     adverb = ""
     modify_verb_have_adverb_phrase_ids = list(set(have_adverb_phrase_ids) & set(modify_verb_phrase_ids))
     for modify_verb_have_adverb_phrase_id in modify_verb_have_adverb_phrase_ids:
-        for have_specific_morpheme in have_adverb_morphemes:
-            if have_specific_morpheme.phrase_id == modify_verb_have_adverb_phrase_id:
-                adverb += have_specific_morpheme.surface
+        for have_special_adjective_morpheme in have_adverb_morphemes:
+            if have_special_adjective_morpheme.phrase_id == modify_verb_have_adverb_phrase_id:
+                adverb += have_special_adjective_morpheme.surface
     return adverb
 
 
@@ -72,19 +74,27 @@ def decide_output(engine):
 
     have_noun_morphemes = session.query(db.Morpheme).filter_by(pos="名詞").all()
     have_particle_morphemes = session.query(db.Morpheme).filter_by(pos="助詞").all()
+
+    have_special_particle_morphemes = []
+    for special_particle in have_particle_morphemes:  # specialとは"の"と"は"以外の助詞を指す
+        if "の" != special_particle.surface and "は" != special_particle.surface:
+            have_special_particle_morphemes.append(special_particle)
+
     have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
-    have_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_particle_morphemes]
-    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_particle_phrase_ids))
+    have_special_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_special_particle_morphemes]
+    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_special_particle_phrase_ids))
+
     have_verb_morphemes = session.query(db.Morpheme).filter_by(pos="動詞").all()
     have_adverb_morphemes = session.query(db.Morpheme).filter_by(pos="副詞").all()
     have_adverb_phrase_ids = [morpheme.phrase_id for morpheme in have_adverb_morphemes]
     have_adjective_morphemes = session.query(db.Morpheme).filter_by(pos="形容詞").all()
-    have_specific_morphemes = []
-    have_specific_phrase_ids = []
-    for specific in have_adjective_morphemes:  # specificとはイ形容詞とナ形容詞を含む形容詞を指す
-        if "イ形容詞" in specific.conjugate or "ナ形容詞" in specific.conjugate:
-            have_specific_morphemes.append(specific)
-            have_specific_phrase_ids.append(specific.phrase_id)
+
+    have_special_adjective_morphemes = []
+    have_special_adjective_phrase_ids = []
+    for special_adjective in have_adjective_morphemes:  # special_adjectiveとはイ形容詞とナ形容詞を含む形容詞を指す
+        if "イ形容詞" in special_adjective.conjugate or "ナ形容詞" in special_adjective.conjugate:
+            have_special_adjective_morphemes.append(special_adjective)
+            have_special_adjective_phrase_ids.append(special_adjective.phrase_id)
 
     output_line_list = []
 
@@ -106,12 +116,13 @@ def decide_output(engine):
                                                             pos="名詞").first().surface
                 particle = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
                                                                 pos="助詞").first().surface
-            specific = connect_specific_to_verb(have_specific_phrase_ids, have_specific_morphemes,
-                                                modify_verb_phrase_ids)
+            special_adjective = connect_special_adjective_to_verb(have_special_adjective_phrase_ids,
+                                                                  have_special_adjective_morphemes,
+                                                                  modify_verb_phrase_ids)
             adverb = connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids)
             verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session)
 
-            output_line_list.append(noun + " " + particle + " " + adverb + specific + verb)
+            output_line_list.append(noun + " " + particle + " " + adverb + special_adjective + verb)
     print(output_line_list)
 
 
