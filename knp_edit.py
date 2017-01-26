@@ -22,31 +22,47 @@ def is_filtering_phrase(voice):
     return False
 
 
-def is_connect_verb(morpheme, next_morpheme, session):
-    print(morpheme.surface)
+def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if next_morpheme.pos != "動詞":
-        print("a")
         return True
 
     phrase = session.query(db.Phrase).filter_by(id=morpheme.phrase_id).first()
     next_phrase = session.query(db.Phrase).filter_by(id=next_morpheme.phrase_id).first()
 
     if phrase.modify_id != next_phrase.id:
-        print("c")
         return True
 
     if phrase.form != "連用":
-        print("d")
         return True
 
     return False
 
 
-def connect_verb(morpheme, next_morpheme, session):
-    if is_connect_verb(morpheme, next_morpheme, session):
-        return morpheme.base
+def connect_specific_to_verb(have_specific_phrase_ids, have_specific_morphemes, modify_verb_phrase_ids):
+    specific = ""
+    modify_verb_have_specific_phrase_ids = list(set(have_specific_phrase_ids) & set(modify_verb_phrase_ids))
+    for modify_verb_have_specific_phrase_id in modify_verb_have_specific_phrase_ids:
+        for have_specific_morpheme in have_specific_morphemes:
+            if have_specific_morpheme.phrase_id == modify_verb_have_specific_phrase_id:
+                specific += have_specific_morpheme.surface
+    return specific
 
-    connected_verb = morpheme.surface + next_morpheme.base
+
+def connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids):
+    adverb = ""
+    modify_verb_have_adverb_phrase_ids = list(set(have_adverb_phrase_ids) & set(modify_verb_phrase_ids))
+    for modify_verb_have_adverb_phrase_id in modify_verb_have_adverb_phrase_ids:
+        for have_specific_morpheme in have_adverb_morphemes:
+            if have_specific_morpheme.phrase_id == modify_verb_have_adverb_phrase_id:
+                adverb += have_specific_morpheme.surface
+    return adverb
+
+
+def connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
+    if is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
+        return have_verb_morpheme.base
+
+    connected_verb = have_verb_morpheme.surface + have_verb_next_morpheme.base
     return connected_verb
 
 
@@ -54,35 +70,49 @@ def decide_output(engine):
     sess = sessionmaker(bind=engine)
     session = sess()
 
+    have_noun_morphemes = session.query(db.Morpheme).filter_by(pos="名詞").all()
+    have_particle_morphemes = session.query(db.Morpheme).filter_by(pos="助詞").all()
+    have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
+    have_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_particle_morphemes]
+    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_particle_phrase_ids))
     have_verb_morphemes = session.query(db.Morpheme).filter_by(pos="動詞").all()
+    have_adverb_morphemes = session.query(db.Morpheme).filter_by(pos="副詞").all()
+    have_adverb_phrase_ids = [morpheme.phrase_id for morpheme in have_adverb_morphemes]
+    have_adjective_morphemes = session.query(db.Morpheme).filter_by(pos="形容詞").all()
+    have_specific_morphemes = []
+    have_specific_phrase_ids = []
+    for specific in have_adjective_morphemes:  # specificとはイ形容詞とナ形容詞を含む形容詞を指す
+        if "イ形容詞" in specific.conjugate or "ナ形容詞" in specific.conjugate:
+            have_specific_morphemes.append(specific)
+            have_specific_phrase_ids.append(specific.phrase_id)
 
     output_line_list = []
 
     for have_verb_morpheme in have_verb_morphemes:
-        have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
-        if is_filtering_phrase(have_verb_phrase.voice):
-            continue
-
         have_verb_next_morpheme_id = have_verb_morpheme.id + 1
         have_verb_next_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_next_morpheme_id).first()
-
         if have_verb_next_morpheme is None:
             break
 
-        have_verb_pre_morpheme_id = have_verb_morpheme.id - 1
-        have_verb_2_pre_morpheme_id = have_verb_morpheme.id - 2
-        have_verb_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_pre_morpheme_id).first()
-        have_verb_2_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_2_pre_morpheme_id).first()
+        have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
+        modify_verb_phrases = session.query(db.Phrase).filter_by(modify_id=have_verb_phrase.id).all()
+        modify_verb_phrase_ids = [phrase.id for phrase in modify_verb_phrases]
 
-        verb = connect_verb(have_verb_morpheme, have_verb_next_morpheme, session)
+        print_noun_and_phrase_phrase_ids = list(
+            set(have_noun_and_particle_phrase_ids) & set(modify_verb_phrase_ids))
+        if print_noun_and_phrase_phrase_ids:
+            for print_noun_and_phrase_phrase_id in print_noun_and_phrase_phrase_ids:
+                noun = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
+                                                            pos="名詞").first().surface
+                particle = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
+                                                                pos="助詞").first().surface
+            specific = connect_specific_to_verb(have_specific_phrase_ids, have_specific_morphemes,
+                                                modify_verb_phrase_ids)
+            adverb = connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids)
+            verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session)
 
-        if have_verb_pre_morpheme.pos == "助詞" and have_verb_2_pre_morpheme.pos == "名詞":
-            noun = have_verb_2_pre_morpheme.surface
-            particle = have_verb_pre_morpheme.surface
-            output_line_list.append(noun + ' ' + particle + ' ' + verb)
-
+            output_line_list.append(noun + " " + particle + " " + adverb + specific + verb)
     print(output_line_list)
-    print(len(output_line_list))
 
 
 def create_db(engine):
