@@ -35,6 +35,9 @@ def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if phrase.form != "連用":
         return True
 
+    if morpheme.adj == "タ系連用テ系":
+        return True
+
     return False
 
 
@@ -77,7 +80,8 @@ def decide_output(engine):
 
     have_special_particle_morphemes = []
     for special_particle in have_particle_morphemes:  # specialとは"の"と"は"以外の助詞を指す
-        if "の" != special_particle.surface and "は" != special_particle.surface:
+        # if "の" != special_particle.surface and "は" != special_particle.surface:
+        if "の" != special_particle.surface:
             have_special_particle_morphemes.append(special_particle)
 
     have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
