@@ -23,18 +23,20 @@ def is_filtering_phrase(voice):
 
 
 def is_connect_verb(morpheme, next_morpheme, session):
+    print(morpheme.surface)
     if next_morpheme.pos != "動詞":
+        print("a")
         return True
 
     phrase = session.query(db.Phrase).filter_by(id=morpheme.phrase_id).first()
     next_phrase = session.query(db.Phrase).filter_by(id=next_morpheme.phrase_id).first()
-    if float(phrase.id) != (float(next_phrase.id) + 0.1):
-        return True
 
     if phrase.modify_id != next_phrase.id:
+        print("c")
         return True
 
     if phrase.form != "連用":
+        print("d")
         return True
 
     return False
@@ -63,6 +65,9 @@ def decide_output(engine):
 
         have_verb_next_morpheme_id = have_verb_morpheme.id + 1
         have_verb_next_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_next_morpheme_id).first()
+
+        if have_verb_next_morpheme is None:
+            break
 
         have_verb_pre_morpheme_id = have_verb_morpheme.id - 1
         have_verb_2_pre_morpheme_id = have_verb_morpheme.id - 2
@@ -130,8 +135,8 @@ def create_db(engine):
 
 def main():
     engine = process_db.open_db(_db_name)
-    create_db(engine)
-    # decide_output(engine)
+    # create_db(engine)
+    decide_output(engine)
 
 
 if __name__ == "__main__":
