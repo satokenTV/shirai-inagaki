@@ -22,6 +22,12 @@ def is_filtering_phrase(voice):
     return True
 
 
+def change_surface(verb):
+    if verb == "居る" or verb == "煎る" or verb == "射る":
+        return "いる"
+    return verb
+
+
 def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if next_morpheme.pos != "動詞":
         return False
@@ -35,7 +41,7 @@ def is_connect_verb_to_verb(morpheme, next_morpheme, session):
     if phrase.form != "連用":
         return False
 
-    if morpheme.adj == "タ系連用テ系":
+    if morpheme.adj == "タ系連用テ形":
         return False
 
     if morpheme.surface == morpheme.base:
@@ -82,9 +88,9 @@ def connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_
         verb += have_verb_pre_morpheme.surface
 
     if is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
-        verb += have_verb_morpheme.surface + have_verb_next_morpheme.base
+        verb += have_verb_morpheme.surface + change_surface(have_verb_next_morpheme.base)
     else:
-        verb += have_verb_morpheme.base
+        verb += change_surface(have_verb_morpheme.base)
     return verb
 
 
