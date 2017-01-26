@@ -30,5 +30,7 @@ class Morpheme(Base):
     surface = Column(String, nullable=False)    # 表層形
     base = Column(String, nullable=False)   # 原型
     pos = Column(String, nullable=False)    # 品詞
+    pos2 = Column(String, nullable=False)  # 品詞細分類
+    conjugate = Column(String, nullable=False)  # 活用形
     adj = Column(String, nullable=False)    # 連用,連体の情報
     phrase_id = Column(String, ForeignKey("phrases.id"), nullable=False)  # Phraseテーブルを参照するための外部キー
