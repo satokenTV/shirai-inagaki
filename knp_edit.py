@@ -87,29 +87,40 @@ def connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_
     if is_connect_noun_to_verb(have_verb_morpheme, have_verb_pre_morpheme):
         verb += have_verb_pre_morpheme.surface
 
-    if is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
+    if have_verb_next_morpheme is None:
+        verb += change_surface(have_verb_morpheme.base)
+    elif is_connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, session):
         verb += have_verb_morpheme.surface + change_surface(have_verb_next_morpheme.base)
     else:
         verb += change_surface(have_verb_morpheme.base)
     return verb
 
 
+def successive_noun_and_particle(pre_morpheme, pre2_morpheme):
+    if pre2_morpheme.pos == "名詞":
+        return pre2_morpheme.surface + pre_morpheme.surface
+    else:
+        return ""
+
+
+def successive_noun_and_particle_and_verb(pre_morpheme, session):
+    pre2_morpheme_id = pre_morpheme.id - 1
+    pre2_morpheme = session.query(db.Morpheme).filter_by(id=pre2_morpheme_id).first()
+    result = ""
+    if (pre_morpheme.pos == "副詞") or (pre_morpheme.pos2 == "サ変名詞") or ("イ形容詞" in pre_morpheme.conjugate) or ("ナ形容詞" in pre_morpheme.conjugate):
+        result += successive_noun_and_particle_and_verb(pre2_morpheme, session)
+
+    if pre_morpheme.pos == "助詞":
+        # if "の" != pre_morpheme.surface and "は" != pre_morpheme.surface:
+        if "の" != pre_morpheme.surface:
+            result = successive_noun_and_particle(pre_morpheme, pre2_morpheme)
+
+    return result
+
+
 def decide_output(engine):
     sess = sessionmaker(bind=engine)
     session = sess()
-
-    have_noun_morphemes = session.query(db.Morpheme).filter_by(pos="名詞").all()
-    have_particle_morphemes = session.query(db.Morpheme).filter_by(pos="助詞").all()
-
-    have_special_particle_morphemes = []
-    for special_particle in have_particle_morphemes:  # specialとは"の"と"は"以外の助詞を指す
-        # if "の" != special_particle.surface and "は" != special_particle.surface:
-        if "の" != special_particle.surface:
-            have_special_particle_morphemes.append(special_particle)
-
-    have_noun_phrase_ids = [morpheme.phrase_id for morpheme in have_noun_morphemes]
-    have_special_particle_phrase_ids = [morpheme.phrase_id for morpheme in have_special_particle_morphemes]
-    have_noun_and_particle_phrase_ids = list(set(have_noun_phrase_ids) & set(have_special_particle_phrase_ids))
 
     have_verb_morphemes = session.query(db.Morpheme).filter_by(pos="動詞").all()
     have_adverb_morphemes = session.query(db.Morpheme).filter_by(pos="副詞").all()
@@ -130,32 +141,25 @@ def decide_output(engine):
         have_verb_pre_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_pre_morpheme_id).first()
         have_verb_next_morpheme_id = have_verb_morpheme.id + 1
         have_verb_next_morpheme = session.query(db.Morpheme).filter_by(id=have_verb_next_morpheme_id).first()
-        if have_verb_next_morpheme is None:
-            break
-
         have_verb_phrase = session.query(db.Phrase).filter_by(id=have_verb_morpheme.phrase_id).first()
         if not is_filtering_phrase(have_verb_phrase.voice):
+            continue
+
+        noun_particle = successive_noun_and_particle_and_verb(have_verb_pre_morpheme, session)
+        if noun_particle == "":
             continue
 
         modify_verb_phrases = session.query(db.Phrase).filter_by(modify_id=have_verb_phrase.id).all()
         modify_verb_phrase_ids = [phrase.id for phrase in modify_verb_phrases]
 
-        print_noun_and_phrase_phrase_ids = list(
-            set(have_noun_and_particle_phrase_ids) & set(modify_verb_phrase_ids))
-        if print_noun_and_phrase_phrase_ids:
-            for print_noun_and_phrase_phrase_id in print_noun_and_phrase_phrase_ids:
-                noun = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
-                                                            pos="名詞").first().surface
-                particle = session.query(db.Morpheme).filter_by(phrase_id=print_noun_and_phrase_phrase_id,
-                                                                pos="助詞").first().surface
+        special_adjective = connect_special_adjective_to_verb(have_special_adjective_phrase_ids,
+                                                              have_special_adjective_morphemes,
+                                                              modify_verb_phrase_ids)
+        adverb = connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids)
+        verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_pre_morpheme, session)
 
-            special_adjective = connect_special_adjective_to_verb(have_special_adjective_phrase_ids,
-                                                                  have_special_adjective_morphemes,
-                                                                  modify_verb_phrase_ids)
-            adverb = connect_adverb_to_verb(have_adverb_phrase_ids, have_adverb_morphemes, modify_verb_phrase_ids)
-            verb = connect_verb_to_verb(have_verb_morpheme, have_verb_next_morpheme, have_verb_pre_morpheme, session)
+        output_line_list.append(noun_particle + " " + adverb + special_adjective + verb)
 
-            output_line_list.append(noun + " " + particle + " " + adverb + special_adjective + verb)
     print(output_line_list)
 
 
