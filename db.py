@@ -6,10 +6,32 @@ from sqlalchemy.ext.declarative import declarative_base
 Base = declarative_base()
 
 
+class ResultTypeA(Base):
+    __tablename__ = "resultAs"
+    id = Column(Integer, primary_key=True, nullable=False)
+    noun_particle = Column(String, nullable=False)
+    verb = Column(String, nullable=False)
+
+
+class ResultTypeB(Base):
+    __tablename__ = "resultBs"
+    id = Column(Integer, primary_key=True, nullable=False)
+    noun = Column(String, nullable=False)
+    verb = Column(String, nullable=False)
+
+
+class ResultTypeC(Base):
+    __tablename__ = "resultCs"
+    id = Column(Integer, primary_key=True, nullable=False)
+    noun = Column(String, nullable=False)
+    particle = Column(String, nullable=False)
+    verb = Column(String, nullable=False)
+
+
 class Sentence(Base):
     __tablename__ = "sentences"
     id = Column(Integer, primary_key=True, nullable=False)
-    strings = Column(String, nullable=False )    # Sentenceの持つ文字列
+    strings = Column(String, nullable=False)    # Sentenceの持つ文字列
     phrases = relationship("Phrase", backref="sentence")    # Phraseテーブルと関連を持たせる
     # backrefの値は,何でも良い(このテーブル名である必要はない)
 
